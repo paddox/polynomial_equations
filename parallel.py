@@ -2,10 +2,14 @@ from math import sqrt
 from fractions import Fraction
 from copy import deepcopy
 import time
+from numba import jit, test
 
 
 def possible_solutions(polynom):
-    numerator = get_deviders(abs(polynom[0]))
+    if polynom[0]>0:
+        numerator = get_deviders(polynom[0])
+    else:
+        numerator = get_deviders(-polynom[0])
     denomerator = get_deviders(abs(polynom[-1]))
     solutions = []
     for t in numerator:
@@ -13,7 +17,6 @@ def possible_solutions(polynom):
             if Fraction(t / s) not in solutions:
                 solutions.append(Fraction(t / s))
     return solutions
-
 
 def exam_solutions(polynom, solutions):
     ret = []
@@ -34,6 +37,7 @@ def get_deviders(num):
                 ret.append(-num // i)
     return ret
 
+@jit(nopython=True, parallel=True)
 def mul(a, b):
     res = [0 for i in range(len(a) + len(b) - 1)]
     for i in range(len(a)):
@@ -41,7 +45,6 @@ def mul(a, b):
             res[i+j] += a[i] * b[j]
     #print("mul {0} and {1}, result {2}".format(a, b, res))
     return res
-
 
 def sub(a, b):
     c = [-el for el in b]
@@ -51,18 +54,32 @@ def sub(a, b):
 
 
 def sum_(a, b):
-    c = deepcopy(a)
-    d = deepcopy(b)
+    #c = deepcopy(a)
+    #d = deepcopy(b)
+    res = [0 for i in range(max(len(a), len(b)))]
+    if len(a) > len(b):
+        for i in range(len(a)):
+            res[i] = a[i]
+        for i in range(len(b)):
+            res[i] += b[i]
+    else:
+        for i in range(len(b)):
+            res[i] = b[i]
+        for i in range(len(a)):
+            res[i] += a[i]
+    return res
+    '''
     if len(c) > len(d):
         d.extend([0 for i in range(len(c) - len(d))])
     elif len(c) < len(d):
         c.extend([0 for i in range(len(d) - len(c))])
     #print("sum_ {0} and {1}, result {2}".format(a, b, [c[i] + d[i] for i in range(len(c))]))
     return [c[i] + d[i] for i in range(len(c))]
+    '''
 
 
 def determinant(matrix_input):
-    matrix = deepcopy(matrix_input)
+    matrix = [matrix_input[i] for i in range(len(matrix_input))]
     if len(matrix) != len(matrix[0]):
         raise Exception("There is not square matrix.")
     if len(matrix) == 1:
@@ -90,22 +107,24 @@ def determinant(matrix_input):
                   )
     return det
 
-
+@jit(nopython=True, parallel=True)
 def computeGCD(x, y):   
    while(y): 
        x, y = y, x % y   
    return x 
 
-
+@jit(nopython=True, parallel=True)
 def computeLCM(x, y):
     return x * y // computeGCD(x, y)
 
-
+@jit(nopython=True, parallel=True)
 def list_LCM(array):
     gcd = array[0]
     for i in range(len(array)-1):
         gcd = computeLCM(gcd, array[i+1])
+
     return gcd
+
 
 def read_input():
     f = open('input.txt')
@@ -125,6 +144,7 @@ def read_input():
             mtrx[num_eq][i].reverse()
         num_eq += 1
     return equation, mtrx
+
 
 def make_resultant_matrix(equation, mtrx):
     d1 = int(sqrt(len(equation[0]))) - 1
@@ -161,7 +181,7 @@ def make_resultant_matrix(equation, mtrx):
     return resultant_mtrx
 
 
-def exam_x(solutions_y):
+def exam_x(equation, solutions_y):
     for solut in solutions_y:
         #print("{0}/{1}".format(solut.numerator, solut.denominator))
         solut_x = []
@@ -181,7 +201,8 @@ def exam_x(solutions_y):
         for x in eq_solve_x:
             yield x, solut
 
-if __name__ == "__main__":
+
+def main():
     starttime = time.time()
     equation, mtrx = read_input()
     #print(equation)
@@ -190,9 +211,16 @@ if __name__ == "__main__":
     possible_solut = possible_solutions(det)
     soluts = exam_solutions(det, possible_solut)
     #exam_x(soluts)
-    for solution in exam_x(soluts):
+    for solution in exam_x(equation, soluts):
         print("({0}, {1})".format(str(solution[0]), str(solution[1])))
     print(time.time() - starttime, "s")
+
+if __name__ == "__main__":
+    main()
+    main()
+    main()
+    main()
+    main()
 
     
 
