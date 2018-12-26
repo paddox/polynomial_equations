@@ -1,43 +1,51 @@
+from __future__ import absolute_import
+from __future__ import print_function
 from math import sqrt
 from fractions import Fraction
 from copy import deepcopy
 import time
 import numpy as np
-from time import sleep as get_devider
+import pyopencl as cl
+import pyopencl.array as cl_array
 
 
 def possible_solutions(polynom):
-    if polynom[0]>0:
-        numerator = get_deviders(polynom[0])
-    else:
-        numerator = get_deviders(-polynom[0])
+    numerator = get_deviders(abs(polynom[0]))
     denomerator = get_deviders(abs(polynom[-1]))
-    solutions = []
+    solutions = np.zeros(numerator.size * denomerator.size, dtype=object)
+    j = 0
     for t in numerator:
         for s in denomerator:
-            if Fraction(t / s) not in solutions:
-                solutions.append(Fraction(t / s))
-    return solutions
+            solutions[j] = Fraction(t, s)
+            j += 1
+    return np.unique(np.trim_zeros(solutions, 'b'))
 
 
 def exam_solutions(polynom, solutions):
-    ret = []
+    ret = np.zeros(solutions.size, dtype=object)
+    j = 0
     for solution in solutions:
         if sum([polynom[i] * solution ** i for i in range(len(polynom))]) == 0:
-            ret.append(solution)
-    return ret
+            ret[j] = solution
+            j += 1
+    return np.trim_zeros(ret, 'b')
 
 
 def get_deviders(num):
-    ret = []
+    ret = np.zeros(2 * num, dtype=np.int32)
+    j = 0
     for i in range(1, int(sqrt(num)) + 1):
         if num % i == 0:
-            ret.append(i)
-            ret.append(-i)
+            ret[j] = i
+            j += 1
+            ret[j] = -i
+            j += 1
             if num != i ** 2:
-                ret.append(num // i)
-                ret.append(-num // i)
-    return ret
+                ret[j] = num // i
+                j += 1
+                ret[j] = -num // i
+                j += 1
+    return np.trim_zeros(ret)
 
 def mul(a, b):
     res = [0 for i in range(len(a) + len(b) - 1)]
@@ -49,22 +57,43 @@ def mul(a, b):
 
 
 def sub(a, b):
-    c = [-el for el in b]
-    sb = sum_(a, c)
-    #print("sub {0} and {1}, result {2}".format(a, b, sb))
-    return sb
+    a_np = np.array(a, dtype=np.int32)
+    b_np = np.array(b, dtype=np.int32)
+    if a_np.shape > b_np.shape:
+        b_np.resize(a_np.shape)
+    else:
+        a_np.resize(b_np.shape)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a_np)
+    b_dev = cl_array.to_device(queue, b_np)
+    dest_dev = cl_array.empty_like(a_dev)
+    subfunc = cl.elementwise.ElementwiseKernel(ctx, "int *a, int *b, int *c", "c[i] = a[i] - b[i]", "subfunc")
+    subfunc(a_dev, b_dev, dest_dev)
+
+    return dest_dev.get().tolist()
 
 
 def sum_(a, b):
-    c = deepcopy(a)
-    d = deepcopy(b)
-    if len(c) > len(d):
-        d.extend([0 for i in range(len(c) - len(d))])
-    elif len(c) < len(d):
-        c.extend([0 for i in range(len(d) - len(c))])
-    #print("sum_ {0} and {1}, result {2}".format(a, b, [c[i] + d[i] for i in range(len(c))]))
-    get_devider(0.1)
-    return [c[i] + d[i] for i in range(len(c))]
+    a_np = np.array(a, dtype=np.int32)
+    b_np = np.array(b, dtype=np.int32)
+    if a_np.shape > b_np.shape:
+        b_np.resize(a_np.shape)
+    else:
+        a_np.resize(b_np.shape)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a_np)
+    b_dev = cl_array.to_device(queue, b_np)
+    dest_dev = cl_array.empty_like(a_dev)
+    sumfunc = cl.elementwise.ElementwiseKernel(ctx, "int *a, int *b, int *c", "c[i] = a[i] + b[i]", "sumfunc")
+    sumfunc(a_dev, b_dev, dest_dev)
+
+    return dest_dev.get().tolist()
 
 
 def determinant(matrix_input):
@@ -132,16 +161,6 @@ def read_input():
         num_eq += 1
     return equation, mtrx
 
-def make_mtrx(equation):
-    mtrx = [[], []]
-    for num_eq in range(2):
-        koeff_len = int(sqrt(len(equation[num_eq])))
-        for i in range(koeff_len):
-            mtrx[num_eq].append(equation[num_eq][i*koeff_len:(i+1)*koeff_len])
-            mtrx[num_eq][i].reverse()
-    return mtrx
-
-
 def make_resultant_matrix(equation, mtrx):
     d1 = int(sqrt(len(equation[0]))) - 1
     d2 = int(sqrt(len(equation[1]))) - 1
@@ -198,8 +217,9 @@ def exam_x(solutions_y, equation):
             yield x, solut
 
 def main():
+    starttime = time.time()
     equation, mtrx = read_input()
-    print(equation, mtrx)
+    #print(equation)
     res_mtrx = make_resultant_matrix(equation, mtrx)
     det = determinant(res_mtrx)
     possible_solut = possible_solutions(det)
@@ -207,32 +227,12 @@ def main():
     #exam_x(soluts)
     for solution in exam_x(soluts, equation):
         print("({0}, {1})".format(str(solution[0]), str(solution[1])))
-
-def exam_main(equation):
-    mtrx = make_mtrx(equation)
-    print(equation)
-    res_mtrx = make_resultant_matrix(equation, mtrx)
-    det = determinant(res_mtrx)
-    possible_solut = possible_solutions(det)
-    soluts = exam_solutions(det, possible_solut)
-    #exam_x(soluts)
-    for solution in exam_x(soluts, equation):
-        print("({0}, {1})".format(str(solution[0]), str(solution[1])))
+    print(time.time() - starttime, "s")
 
 if __name__ == "__main__":
-    '''
-    starttime = time.time()
     main()
-    print(time.time() - starttime, "s")
-    '''
-    eq = [[1, 0, 0, -1], [0, 0, 4, 0, 0, 0, 1, 0, -5]]
-
-
-
-    for i in np.logspace(0, 10, num=11, dtype=int, base=2):
-        starttime = time.time()
-        exam_main([[el * i for el in equat] for equat in eq])
-        print(time.time() - starttime, "s")
+    main()
+    main()
 
     
 

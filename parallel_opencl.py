@@ -1,22 +1,22 @@
+from __future__ import absolute_import
+from __future__ import print_function
 from math import sqrt
 from fractions import Fraction
 from copy import deepcopy
 import time
 import numpy as np
-from time import sleep as get_devider
+import pyopencl as cl
+import pyopencl.array as cl_array
 
 
 def possible_solutions(polynom):
-    if polynom[0]>0:
-        numerator = get_deviders(polynom[0])
-    else:
-        numerator = get_deviders(-polynom[0])
+    numerator = get_deviders(abs(polynom[0]))
     denomerator = get_deviders(abs(polynom[-1]))
     solutions = []
     for t in numerator:
         for s in denomerator:
-            if Fraction(t / s) not in solutions:
-                solutions.append(Fraction(t / s))
+            if Fraction(t, s) not in solutions:
+                solutions.append(Fraction(t, s))
     return solutions
 
 
@@ -29,46 +29,126 @@ def exam_solutions(polynom, solutions):
 
 
 def get_deviders(num):
-    ret = []
-    for i in range(1, int(sqrt(num)) + 1):
-        if num % i == 0:
-            ret.append(i)
-            ret.append(-i)
-            if num != i ** 2:
-                ret.append(num // i)
-                ret.append(-num // i)
-    return ret
+    a = np.array([num]).astype(np.int32)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a)
+    dest_dev = cl_array.empty_like(cl_array.to_device(queue, np.zeros((2 * a[0]), dtype=np.int32)))
+    prg = cl.Program(ctx, """
+        __kernel void sum(__global const int *a, __global int *c)
+        {
+            int i = 1;
+            int n = a[0];
+            int j = 0;
+            while(i <= sqrt((float) n))
+            {
+                if(n%i==0) {
+                    c[j] = i;
+                    j++;
+                    c[j] = -i;
+                    j++;
+                    if (i != (n / i)) {
+                        c[j] = n/i;
+                        j++;
+                        c[j] = -n/i;
+                        j++;
+                    }
+                } 
+                i++;
+            }
+        }
+        """).build()
+    prg.sum(queue, a.shape, None, a_dev.data, dest_dev.data)
+    return np.trim_zeros(dest_dev.get(), 'b').tolist()
 
-def mul(a, b):
-    res = [0 for i in range(len(a) + len(b) - 1)]
-    for i in range(len(a)):
-        for j in range(len(b)):
-            res[i+j] += a[i] * b[j]
-    #print("mul {0} and {1}, result {2}".format(a, b, res))
-    return res
+def mul(a_, b_):
+    a = np.array(a_).astype(np.int32)
+    b = np.array(b_).astype(np.int32)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a)
+    b_dev = cl_array.to_device(queue, b)
+    sizea_dev = cl_array.to_device(queue, np.array([a.size], dtype=np.int32))
+    sizeb_dev = cl_array.to_device(queue, np.array([b.size], dtype=np.int32))
+    dest_dev = cl_array.empty_like(cl_array.to_device(queue, np.zeros(a.size + b.size - 1, dtype=np.int32)))
+    prg = cl.Program(ctx, """
+        __kernel void mul(__global const int *a, __global const int *b, __global const int *sizea, __global const int *sizeb,  __global int *c)
+        {
+            int size_a = sizea[0];
+            int size_b = sizeb[0];
+            for(int i=0; i<size_a; i++) {
+                for(int j=0; j<size_b; j++) {
+                    c[i+j] += a[i] * b[j];
+                }
+            }
+        }
+        """).build()
+    prg.mul(queue, a.shape, None, a_dev.data, b_dev.data, sizea_dev.data, sizeb_dev.data, dest_dev.data)
+
+    #print(dest_dev, sub)
+    return np.trim_zeros(dest_dev.get(), 'b').tolist()
 
 
 def sub(a, b):
-    c = [-el for el in b]
-    sb = sum_(a, c)
-    #print("sub {0} and {1}, result {2}".format(a, b, sb))
-    return sb
+
+    a_np = np.array(a, dtype=np.int32)
+    b_np = np.array(b, dtype=np.int32)
+    if a_np.size > b_np.size:
+        b_np.resize(a_np.size, refcheck=False)
+    else:
+        a_np.resize(b_np.size, refcheck=False)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a_np)
+    b_dev = cl_array.to_device(queue, b_np)
+    dest_dev = cl_array.empty_like(a_dev)
+    subfunc = cl.elementwise.ElementwiseKernel(ctx, "int *a, int *b, int *c", "c[i] = a[i] - b[i]", "subfunc")
+    subfunc(a_dev, b_dev, dest_dev)
+
+    return dest_dev.get().tolist()
 
 
 def sum_(a, b):
-    c = deepcopy(a)
-    d = deepcopy(b)
-    if len(c) > len(d):
-        d.extend([0 for i in range(len(c) - len(d))])
-    elif len(c) < len(d):
-        c.extend([0 for i in range(len(d) - len(c))])
-    #print("sum_ {0} and {1}, result {2}".format(a, b, [c[i] + d[i] for i in range(len(c))]))
-    get_devider(0.1)
-    return [c[i] + d[i] for i in range(len(c))]
+    a_np = np.array(a, dtype=np.int32)
+    b_np = np.array(b, dtype=np.int32)
+    if a_np.shape > b_np.shape:
+        b_np.resize(a_np.shape, refcheck=False)
+    else:
+        a_np.resize(b_np.shape, refcheck=False)
+    platform = cl.get_platforms()[0]
+    device = platform.get_devices()[0]
+    ctx = cl.Context([device])
+    queue = cl.CommandQueue(ctx)
+    a_dev = cl_array.to_device(queue, a_np)
+    b_dev = cl_array.to_device(queue, b_np)
+    dest_dev = cl_array.empty_like(a_dev)
+    sumfunc = cl.elementwise.ElementwiseKernel(ctx, "int *a, int *b, int *c", "c[i] = a[i] + b[i]", "sumfunc")
+    sumfunc(a_dev, b_dev, dest_dev)
+
+    return dest_dev.get().tolist()
 
 
 def determinant(matrix_input):
     matrix = deepcopy(matrix_input)
+    '''
+    max_size = max([max([len(elem) for elem in row]) for row in matrix_])
+    i = 0
+    for row in matrix_input:        
+        j = 0
+        for elem in row:
+            while len(matrix_[i][j]) != max_size:
+                matrix_[i][j].append(0)
+            j += 1
+        i += 1
+    matrix = np.array(matrix_)
+    print(matrix_)
+    '''
     if len(matrix) != len(matrix[0]):
         raise Exception("There is not square matrix.")
     if len(matrix) == 1:
@@ -141,8 +221,8 @@ def make_mtrx(equation):
             mtrx[num_eq][i].reverse()
     return mtrx
 
-
 def make_resultant_matrix(equation, mtrx):
+    d1 = np.zeros
     d1 = int(sqrt(len(equation[0]))) - 1
     d2 = int(sqrt(len(equation[1]))) - 1
     #print(d1, d2)
@@ -191,6 +271,8 @@ def exam_x(solutions_y, equation):
             poss_solut_x = possible_solutions(polynom_x)
             solut_x.append(exam_solutions(polynom_x, poss_solut_x))
         #print(solut_x)
+        for i in range(len(solut_x)):
+            solut_x[i] = list(solut_x[i])
         solut_x = list(map(set, solut_x))
         #print(solut_x)
         eq_solve_x = solut_x[0] & solut_x[1]
@@ -198,7 +280,20 @@ def exam_x(solutions_y, equation):
             yield x, solut
 
 def main():
+    starttime = time.time()
     equation, mtrx = read_input()
+    #print(equation)
+    res_mtrx = make_resultant_matrix(equation, mtrx)
+    det = determinant(res_mtrx)
+    possible_solut = possible_solutions(det)
+    soluts = exam_solutions(det, possible_solut)
+    #exam_x(soluts)
+    for solution in exam_x(soluts, equation):
+        print("({0}, {1})".format(str(solution[0]), str(solution[1])))
+    print(time.time() - starttime, "s")
+
+def exam_main(equation):
+    mtrx = make_mtrx(equation)
     print(equation, mtrx)
     res_mtrx = make_resultant_matrix(equation, mtrx)
     det = determinant(res_mtrx)
@@ -208,25 +303,8 @@ def main():
     for solution in exam_x(soluts, equation):
         print("({0}, {1})".format(str(solution[0]), str(solution[1])))
 
-def exam_main(equation):
-    mtrx = make_mtrx(equation)
-    print(equation)
-    res_mtrx = make_resultant_matrix(equation, mtrx)
-    det = determinant(res_mtrx)
-    possible_solut = possible_solutions(det)
-    soluts = exam_solutions(det, possible_solut)
-    #exam_x(soluts)
-    for solution in exam_x(soluts, equation):
-        print("({0}, {1})".format(str(solution[0]), str(solution[1])))
-
 if __name__ == "__main__":
-    '''
-    starttime = time.time()
-    main()
-    print(time.time() - starttime, "s")
-    '''
     eq = [[1, 0, 0, -1], [0, 0, 4, 0, 0, 0, 1, 0, -5]]
-
 
 
     for i in np.logspace(0, 10, num=11, dtype=int, base=2):

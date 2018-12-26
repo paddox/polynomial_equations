@@ -3,6 +3,7 @@ from fractions import Fraction
 from copy import deepcopy
 import time
 from numba import jit, test
+import numpy as np
 
 
 def possible_solutions(polynom):
@@ -39,12 +40,14 @@ def get_deviders(num):
 
 @jit(nopython=True, parallel=True)
 def mul(a, b):
-    res = [0 for i in range(len(a) + len(b) - 1)]
+    res = [0]
+    for i in range(len(a) + len(b) - 2):
+        res.append(0)
     for i in range(len(a)):
         for j in range(len(b)):
             res[i+j] += a[i] * b[j]
     #print("mul {0} and {1}, result {2}".format(a, b, res))
-    return res
+    return res[:]
 
 def sub(a, b):
     c = [-el for el in b]
@@ -52,11 +55,12 @@ def sub(a, b):
     #print("sub {0} and {1}, result {2}".format(a, b, sb))
     return sb
 
-
 def sum_(a, b):
     #c = deepcopy(a)
     #d = deepcopy(b)
-    res = [0 for i in range(max(len(a), len(b)))]
+    res = []
+    for i in range(max(len(a), len(b))):
+        res.append(0)
     if len(a) > len(b):
         for i in range(len(a)):
             res[i] = a[i]
@@ -145,6 +149,14 @@ def read_input():
         num_eq += 1
     return equation, mtrx
 
+def make_mtrx(equation):
+    mtrx = [[], []]
+    for num_eq in range(2):
+        koeff_len = int(sqrt(len(equation[num_eq])))
+        for i in range(koeff_len):
+            mtrx[num_eq].append(equation[num_eq][i*koeff_len:(i+1)*koeff_len])
+            mtrx[num_eq][i].reverse()
+    return mtrx
 
 def make_resultant_matrix(equation, mtrx):
     d1 = int(sqrt(len(equation[0]))) - 1
@@ -181,7 +193,7 @@ def make_resultant_matrix(equation, mtrx):
     return resultant_mtrx
 
 
-def exam_x(equation, solutions_y):
+def exam_x(solutions_y, equation):
     for solut in solutions_y:
         #print("{0}/{1}".format(solut.numerator, solut.denominator))
         solut_x = []
@@ -203,7 +215,6 @@ def exam_x(equation, solutions_y):
 
 
 def main():
-    starttime = time.time()
     equation, mtrx = read_input()
     #print(equation)
     res_mtrx = make_resultant_matrix(equation, mtrx)
@@ -211,16 +222,28 @@ def main():
     possible_solut = possible_solutions(det)
     soluts = exam_solutions(det, possible_solut)
     #exam_x(soluts)
-    for solution in exam_x(equation, soluts):
+    for solution in exam_x(soluts, equation):
         print("({0}, {1})".format(str(solution[0]), str(solution[1])))
-    print(time.time() - starttime, "s")
+
+def exam_main(equation):
+    mtrx = make_mtrx(equation)
+    print(equation, mtrx)
+    res_mtrx = make_resultant_matrix(equation, mtrx)
+    det = determinant(res_mtrx)
+    possible_solut = possible_solutions(det)
+    soluts = exam_solutions(det, possible_solut)
+    #exam_x(soluts)
+    for solution in exam_x(soluts, equation):
+        print("({0}, {1})".format(str(solution[0]), str(solution[1])))
 
 if __name__ == "__main__":
-    main()
-    main()
-    main()
-    main()
-    main()
+    eq = [[1, 0, 0, -1], [0, 0, 4, 0, 0, 0, 1, 0, -5]]
+
+
+    for i in np.logspace(0, 10, num=11, dtype=int, base=2):
+        starttime = time.time()
+        exam_main([[el * i for el in equat] for equat in eq])
+        print(time.time() - starttime, "s")
 
     
 
