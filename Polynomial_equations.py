@@ -3,7 +3,8 @@ from fractions import Fraction
 from copy import deepcopy
 import time
 import numpy as np
-from time import sleep as get_devider
+import timeit
+import cProfile
 
 
 def possible_solutions(polynom):
@@ -63,7 +64,6 @@ def sum_(a, b):
     elif len(c) < len(d):
         c.extend([0 for i in range(len(d) - len(c))])
     #print("sum_ {0} and {1}, result {2}".format(a, b, [c[i] + d[i] for i in range(len(c))]))
-    get_devider(0.1)
     return [c[i] + d[i] for i in range(len(c))]
 
 
@@ -108,9 +108,15 @@ def computeLCM(x, y):
 
 
 def list_LCM(array):
+    lcm = array[0]
+    for i in range(len(array)-1):
+        lcm = computeLCM(lcm, array[i+1])
+    return lcm
+
+def list_GCD(array):
     gcd = array[0]
     for i in range(len(array)-1):
-        gcd = computeLCM(gcd, array[i+1])
+        gcd = computeGCD(gcd, array[i+1])
     return gcd
 
 def read_input():
@@ -201,7 +207,12 @@ def main():
     equation, mtrx = read_input()
     print(equation, mtrx)
     res_mtrx = make_resultant_matrix(equation, mtrx)
+    print(res_mtrx)
     det = determinant(res_mtrx)
+    gcd = list_GCD(det)
+    if gcd != 1:
+        for i in range(len(det)):
+            det[i] = det[i] // gcd
     possible_solut = possible_solutions(det)
     soluts = exam_solutions(det, possible_solut)
     #exam_x(soluts)
@@ -213,6 +224,10 @@ def exam_main(equation):
     print(equation)
     res_mtrx = make_resultant_matrix(equation, mtrx)
     det = determinant(res_mtrx)
+    gcd = list_GCD(det)
+    if gcd != 1:
+        for i in range(len(det)):
+            det[i] = det[i] // gcd
     possible_solut = possible_solutions(det)
     soluts = exam_solutions(det, possible_solut)
     #exam_x(soluts)
@@ -221,18 +236,25 @@ def exam_main(equation):
 
 if __name__ == "__main__":
     '''
-    starttime = time.time()
-    main()
-    print(time.time() - starttime, "s")
+    cProfile.run("main()")
+    eq = [[500, 0, 0, -500], [0, 0, 2000, 0, 0, 0, 500, 0, -2500]]
+    cProfile.run("exam_main(eq)")
     '''
+    '''
+    loops = 20
+    sec = timeit.timeit("main()", setup="from __main__ import main", number=loops)
+    print('average time ', sec / loops, 's')
+    '''
+    loops = 20
     eq = [[1, 0, 0, -1], [0, 0, 4, 0, 0, 0, 1, 0, -5]]
+    times = []
+    for i in [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]:
+        ex = [[el * i for el in equat] for equat in eq]
+        sec = timeit.timeit("exam_main(ex)", setup="from __main__ import exam_main, ex", number=loops)
+        times.append(sec / loops)
+    print(times)
 
-
-
-    for i in np.logspace(0, 10, num=11, dtype=int, base=2):
-        starttime = time.time()
-        exam_main([[el * i for el in equat] for equat in eq])
-        print(time.time() - starttime, "s")
+    
 
     
 
